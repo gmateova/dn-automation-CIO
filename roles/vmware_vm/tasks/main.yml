@@ -1,0 +1,107 @@
+---
+- name: Validate additional disk definitions
+  ansible.builtin.assert:
+    that:
+      - item.size_gb | int > 0
+      - item.scsi_controller is defined
+      - item.unit_number is defined
+      - item.scsi_controller | int >= 0
+      - item.scsi_controller | int <= 3
+      - item.unit_number | int >= 0
+      - item.unit_number | int <= 15
+      - item.unit_number | int != 7
+    fail_msg: >-
+      Each additional disk requires size_gb, scsi_controller and unit_number.
+      Stable controller/unit addressing is required for idempotency.
+  loop: "{{ vm_disks }}"
+  loop_control:
+    label: "SCSI {{ item.scsi_controller | default('?') }}:{{ item.unit_number | default('?') }}"
+
+- name: Discover VM by name
+  community.vmware.vmware_vm_info:
+    hostname: "{{ vmware.hostname }}"
+    username: "{{ vmware.username }}"
+    password: "{{ vmware.password }}"
+    validate_certs: "{{ vmware.validate_certs }}"
+    vm_name: "{{ vm_name }}"
+    vm_type: vm
+  register: vm_discovery
+  no_log: true
+
+- name: Determine whether VM already exists
+  ansible.builtin.set_fact:
+    vm_exists: "{{ (vm_discovery.virtual_machines | default([]) | length) > 0 }}"
+
+- name: Clone VM from template when absent
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware.hostname }}"
+    username: "{{ vmware.username }}"
+    password: "{{ vmware.password }}"
+    validate_certs: "{{ vmware.validate_certs }}"
+    datacenter: "{{ vmware.datacenter }}"
+    cluster: "{{ vmware.cluster }}"
+    folder: "{{ vmware.folder }}"
+    datastore: "{{ vmware.datastore }}"
+    name: "{{ vm_name }}"
+    template: "{{ vm_template }}"
+    state: present
+    hardware:
+      num_cpus: "{{ vm_cpu }}"
+      memory_mb: "{{ vm_memory_mb }}"
+  when: not vm_exists
+  register: vm_clone
+
+- name: Reconcile VM CPU and RAM
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware.hostname }}"
+    username: "{{ vmware.username }}"
+    password: "{{ vmware.password }}"
+    validate_certs: "{{ vmware.validate_certs }}"
+    datacenter: "{{ vmware.datacenter }}"
+    name: "{{ vm_name }}"
+    state: present
+    hardware:
+      num_cpus: "{{ vm_cpu }}"
+      memory_mb: "{{ vm_memory_mb }}"
+  register: vm_hardware
+
+- name: Reconcile additional virtual disks
+  community.vmware.vmware_guest_disk:
+    hostname: "{{ vmware.hostname }}"
+    username: "{{ vmware.username }}"
+    password: "{{ vmware.password }}"
+    validate_certs: "{{ vmware.validate_certs }}"
+    datacenter: "{{ vmware.datacenter }}"
+    name: "{{ vm_name }}"
+    disk:
+      - size_gb: "{{ item.size_gb }}"
+        type: "{{ item.type | default('thin') }}"
+        datastore: "{{ item.datastore | default(vmware.datastore) }}"
+        state: present
+        scsi_controller: "{{ item.scsi_controller }}"
+        unit_number: "{{ item.unit_number }}"
+        scsi_type: "{{ item.scsi_type | default('paravirtual') }}"
+        disk_mode: "{{ item.disk_mode | default('persistent') }}"
+  loop: "{{ vm_disks }}"
+  loop_control:
+    label: "{{ vm_name }} SCSI {{ item.scsi_controller }}:{{ item.unit_number }} -> {{ item.size_gb }} GB"
+
+- name: Ensure VM is powered on
+  community.vmware.vmware_guest:
+    hostname: "{{ vmware.hostname }}"
+    username: "{{ vmware.username }}"
+    password: "{{ vmware.password }}"
+    validate_certs: "{{ vmware.validate_certs }}"
+    datacenter: "{{ vmware.datacenter }}"
+    name: "{{ vm_name }}"
+    state: poweredon
+
+- name: Provisioning result
+  ansible.builtin.debug:
+    msg:
+      - "VM: {{ vm_name }}"
+      - "OS workflow: {{ vm_os }}"
+      - "Template: {{ vm_template }}"
+      - "CPU: {{ vm_cpu }}"
+      - "RAM: {{ vm_memory_mb }} MB"
+      - "Reserved PHPIPAM address: {{ reserved_ip_address }}"
