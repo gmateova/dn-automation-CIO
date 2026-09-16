@@ -1,0 +1,145 @@
+---
+- name: Authenticate to PHPIPAM
+  ansible.builtin.uri:
+    url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/user/"
+    method: POST
+    url_username: "{{ phpipam.username }}"
+    url_password: "{{ phpipam.password }}"
+    force_basic_auth: true
+    validate_certs: "{{ phpipam.validate_certs }}"
+    return_content: true
+    status_code: 200
+  register: phpipam_auth
+  no_log: true
+
+- name: Store PHPIPAM API token
+  ansible.builtin.set_fact:
+    phpipam_token: "{{ phpipam_auth.json.data.token }}"
+  no_log: true
+
+- name: Search PHPIPAM reservation by hostname
+  ansible.builtin.uri:
+    url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/addresses/search_hostname/{{ vm_ip_hostname | urlencode }}/"
+    method: GET
+    headers:
+      token: "{{ phpipam_token }}"
+    validate_certs: "{{ phpipam.validate_certs }}"
+    return_content: true
+    status_code:
+      - 200
+      - 404
+  register: phpipam_hostname_search
+  no_log: true
+
+- name: Select existing hostname reservation in requested subnet
+  ansible.builtin.set_fact:
+    phpipam_existing_by_hostname: >-
+      {{
+        (phpipam_hostname_search.json.data | default([]))
+        | selectattr('subnetId', 'equalto', phpipam_subnet_id | string)
+        | list
+        | first
+        | default({})
+      }}
+
+- name: Fail if hostname already owns a different explicitly requested address
+  ansible.builtin.assert:
+    that:
+      - vm_ip_address is none or phpipam_existing_by_hostname.ip is not defined or phpipam_existing_by_hostname.ip == vm_ip_address
+    fail_msg: >-
+      Hostname {{ vm_ip_hostname }} already has a different PHPIPAM reservation.
+      Refusing to allocate a second address.
+
+- name: Search explicitly requested IP in PHPIPAM
+  ansible.builtin.uri:
+    url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/addresses/search/{{ vm_ip_address }}/"
+    method: GET
+    headers:
+      token: "{{ phpipam_token }}"
+    validate_certs: "{{ phpipam.validate_certs }}"
+    return_content: true
+    status_code:
+      - 200
+      - 404
+  register: phpipam_ip_search
+  when:
+    - vm_ip_address is not none
+    - phpipam_existing_by_hostname.ip is not defined
+  no_log: true
+
+- name: Select existing explicit IP reservation
+  ansible.builtin.set_fact:
+    phpipam_existing_by_ip: >-
+      {{
+        (phpipam_ip_search.json.data | default([]))
+        | selectattr('subnetId', 'equalto', phpipam_subnet_id | string)
+        | list
+        | first
+        | default({})
+      }}
+  when:
+    - vm_ip_address is not none
+    - phpipam_existing_by_hostname.ip is not defined
+
+- name: Fail if requested IP belongs to another reservation
+  ansible.builtin.assert:
+    that:
+      - phpipam_existing_by_ip.ip is not defined or phpipam_existing_by_ip.hostname | default('') in ['', vm_ip_hostname]
+    fail_msg: "Requested IP {{ vm_ip_address }} is already reserved for another hostname."
+  when:
+    - vm_ip_address is not none
+    - phpipam_existing_by_hostname.ip is not defined
+
+- name: Get first free PHPIPAM address
+  ansible.builtin.uri:
+    url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/addresses/first_free/{{ phpipam_subnet_id }}/"
+    method: GET
+    headers:
+      token: "{{ phpipam_token }}"
+    validate_certs: "{{ phpipam.validate_certs }}"
+    return_content: true
+    status_code: 200
+  register: phpipam_first_free
+  when:
+    - vm_ip_address is none
+    - phpipam_existing_by_hostname.ip is not defined
+  no_log: true
+
+- name: Determine desired IP address
+  ansible.builtin.set_fact:
+    reserved_ip_address: >-
+      {{
+        phpipam_existing_by_hostname.ip
+        if phpipam_existing_by_hostname.ip is defined
+        else (
+          vm_ip_address
+          if vm_ip_address is not none
+          else phpipam_first_free.json.data
+        )
+      }}
+
+- name: Reserve address in PHPIPAM when it does not already exist
+  ansible.builtin.uri:
+    url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/addresses/"
+    method: POST
+    headers:
+      token: "{{ phpipam_token }}"
+    body_format: form-urlencoded
+    body:
+      subnetId: "{{ phpipam_subnet_id }}"
+      ip: "{{ reserved_ip_address }}"
+      hostname: "{{ vm_ip_hostname }}"
+      description: "{{ vm_ip_description }}"
+    validate_certs: "{{ phpipam.validate_certs }}"
+    return_content: true
+    status_code:
+      - 200
+      - 201
+  register: phpipam_create
+  when:
+    - phpipam_existing_by_hostname.ip is not defined
+    - phpipam_existing_by_ip is not defined or phpipam_existing_by_ip.ip is not defined
+
+- name: Show selected address
+  ansible.builtin.debug:
+    msg: "PHPIPAM address for {{ vm_name }}: {{ reserved_ip_address }}"
