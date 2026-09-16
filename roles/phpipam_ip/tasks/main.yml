@@ -17,6 +17,27 @@
     phpipam_token: "{{ phpipam_auth.json.data.token }}"
   no_log: true
 
+- name: Read requested PHPIPAM subnet
+  ansible.builtin.uri:
+    url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/subnets/{{ phpipam_subnet_id }}/"
+    method: GET
+    headers:
+      token: "{{ phpipam_token }}"
+    validate_certs: "{{ phpipam.validate_certs }}"
+    return_content: true
+    status_code: 200
+  register: phpipam_subnet
+  no_log: true
+
+- name: Validate requested VLAN against PHPIPAM subnet
+  ansible.builtin.assert:
+    that:
+      - phpipam_subnet.json.data.vlanId is defined
+      - phpipam_subnet.json.data.vlanId | string == phpipam_vlan_id | string
+    fail_msg: >-
+      PHPIPAM subnet {{ phpipam_subnet_id }} is not assigned to requested VLAN ID
+      {{ phpipam_vlan_id }}. Refusing to reserve an address in the wrong VLAN.
+
 - name: Search PHPIPAM reservation by hostname
   ansible.builtin.uri:
     url: "{{ phpipam.url | regex_replace('/$', '') }}/api/{{ phpipam.app_id }}/addresses/search_hostname/{{ vm_ip_hostname | urlencode }}/"
@@ -140,6 +161,8 @@
     - phpipam_existing_by_hostname.ip is not defined
     - phpipam_existing_by_ip is not defined or phpipam_existing_by_ip.ip is not defined
 
-- name: Show selected address
+- name: Show selected address and VLAN
   ansible.builtin.debug:
-    msg: "PHPIPAM address for {{ vm_name }}: {{ reserved_ip_address }}"
+    msg: >-
+      PHPIPAM address for {{ vm_name }}: {{ reserved_ip_address }}
+      (subnet ID {{ phpipam_subnet_id }}, VLAN ID {{ phpipam_vlan_id }})
