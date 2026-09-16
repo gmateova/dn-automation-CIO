@@ -1,0 +1,10 @@
+*.retry
+*.log
+.venv/
+venv/
+.env
+.env.*
+secrets.yml
+vault.yml
+*.vault.yml
+.local/
