@@ -1,0 +1,18 @@
+---
+# Copy this file outside Git or provide it from AWX/AAP extra vars.
+vm_name: dn-test-app01
+vm_cpu: 4
+vm_memory_mb: 8192
+
+vm_disks:
+  - size_gb: 100
+    datastore: datastore01
+    type: thin
+
+phpipam_subnet_id: 123
+
+# null = allocate first free address in the subnet.
+# Set an address to request/reserve a specific IP.
+vm_ip_address: null
+vm_ip_hostname: dn-test-app01.example.internal
+vm_ip_description: DN CIO automation - dn-test-app01
