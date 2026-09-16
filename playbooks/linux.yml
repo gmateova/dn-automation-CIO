@@ -1,0 +1,31 @@
+---
+- name: Provision or reconcile Linux VM
+  hosts: localhost
+  gather_facts: false
+  vars_files:
+    - ../vars/common.yml
+    - ../vars/linux.yml
+
+  pre_tasks:
+    - name: Validate required Linux VM inputs
+      ansible.builtin.assert:
+        that:
+          - vm_name is string
+          - vm_name | length > 0
+          - vm_template is string
+          - vm_template | length > 0
+          - vm_template != 'CHANGE_ME_LINUX_TEMPLATE'
+          - vm_cpu | int > 0
+          - vm_memory_mb | int > 0
+          - phpipam_subnet_id is not none
+          - vmware.hostname | length > 0
+          - vmware.username | length > 0
+          - vmware.password | length > 0
+          - phpipam.url | length > 0
+          - phpipam.username | length > 0
+          - phpipam.password | length > 0
+        fail_msg: Missing required VM, VMware or PHPIPAM variables.
+
+  roles:
+    - role: phpipam_ip
+    - role: vmware_vm
