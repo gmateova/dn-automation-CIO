@@ -4,10 +4,14 @@ vm_name: dn-test-app01
 vm_cpu: 4
 vm_memory_mb: 8192
 
+# Controller + unit identify the disk on every rerun. Disk size may be increased;
+# VMware does not support shrinking a VMDK through this workflow.
 vm_disks:
   - size_gb: 100
     datastore: datastore01
     type: thin
+    scsi_controller: 0
+    unit_number: 1
 
 phpipam_subnet_id: 123
 
