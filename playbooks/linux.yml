@@ -17,14 +17,18 @@
           - vm_template != 'CHANGE_ME_LINUX_TEMPLATE'
           - vm_cpu | int > 0
           - vm_memory_mb | int > 0
+          - phpipam_subnet_id is defined
           - phpipam_subnet_id is not none
+          - phpipam_vlan_id is defined
+          - phpipam_vlan_id is not none
+          - phpipam_vlan_id | string | length > 0
           - vmware.hostname | length > 0
           - vmware.username | length > 0
           - vmware.password | length > 0
           - phpipam.url | length > 0
           - phpipam.username | length > 0
           - phpipam.password | length > 0
-        fail_msg: Missing required VM, VMware or PHPIPAM variables.
+        fail_msg: Missing required VM, VMware, PHPIPAM subnet or VLAN variables.
 
   roles:
     - role: phpipam_ip
