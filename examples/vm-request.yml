@@ -13,7 +13,11 @@ vm_disks:
     scsi_controller: 0
     unit_number: 1
 
+# PHPIPAM network selection. Both are required inputs. The automation verifies
+# that the selected subnet is actually assigned to the requested VLAN before
+# reserving an address.
 phpipam_subnet_id: 123
+phpipam_vlan_id: 456
 
 # null = allocate first free address in the subnet.
 # Set an address to request/reserve a specific IP.
