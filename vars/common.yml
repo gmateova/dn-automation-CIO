@@ -1,0 +1,31 @@
+---
+# Non-secret defaults. Override for the target DN environment.
+
+vmware:
+  hostname: "{{ lookup('env', 'VMWARE_HOST') }}"
+  username: "{{ lookup('env', 'VMWARE_USER') }}"
+  password: "{{ lookup('env', 'VMWARE_PASSWORD') }}"
+  validate_certs: true
+  datacenter: CHANGE_ME
+  cluster: CHANGE_ME
+  folder: /CHANGE_ME/vm
+  datastore: CHANGE_ME
+
+phpipam:
+  url: "{{ lookup('env', 'PHPIPAM_URL') }}"
+  app_id: "{{ lookup('env', 'PHPIPAM_APP_ID') | default('ansible', true) }}"
+  username: "{{ lookup('env', 'PHPIPAM_USER') }}"
+  password: "{{ lookup('env', 'PHPIPAM_PASSWORD') }}"
+  validate_certs: true
+
+# VM request values are normally supplied with -e @request.yml.
+vm_name: null
+vm_cpu: 2
+vm_memory_mb: 4096
+vm_disks: []
+
+# PHPIPAM subnet from which an address is reserved.
+phpipam_subnet_id: null
+vm_ip_address: null
+vm_ip_hostname: "{{ vm_name }}"
+vm_ip_description: "DN CIO automation - {{ vm_name }}"
