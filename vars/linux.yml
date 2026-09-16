@@ -1,0 +1,4 @@
+---
+vm_os: linux
+vm_template: CHANGE_ME_LINUX_TEMPLATE
+vm_guest_id: null
